@@ -2,19 +2,21 @@ import numpy as np
 import pandas as pd
 from sklearn.naive_bayes import GaussianNB
 
+import ystockquote
 from SMAMomentumIndicator import SMAMomentumIndicator
 
 ###begin point of code
 
 #base_dir="//Users//clydemoreno//Downloads//data//DataLocal//"
 base_dir="//Users//clydemoreno//Downloads//data//"
-addressable_dates = pd.date_range('2012-01-01','2016-01-01')
-initial_training_dates = pd.date_range('2012-05-01','2013-5-31')
-#initial_test_date = pd.date_range('2012-12-01','2013-12-31')
-initial_actual_test_date = pd.date_range('2013-06-01','2013-12-31')
+# addressable_dates = pd.date_range('2012-01-01','2016-01-01')
+# initial_training_dates = pd.date_range('2012-05-01','2013-5-31')
+# #initial_test_date = pd.date_range('2012-12-01','2013-12-31')
+# initial_actual_test_date = pd.date_range('2013-06-01','2013-12-31')
 sma_period = 100
 std_dev_period = 63
 t_bill = 0.23
+acc_list = []
 
 
 
@@ -49,38 +51,7 @@ def get_data(symbols, dates):
         else:
             df = df.rename(columns={'Adj Close': 'Close'})
 
-            #df_temp = df_temp.rename(columns={'Adj Close': 'Close'})
-            #df = df_temp
-
-
     return df
-
-
-
-# def get_data2(symbols, dates):
-#     """Read stock data (adjusted close) for given symbols from CSV files."""
-#     df = pd.DataFrame(index=dates)
-#     if 'SPY' not in symbols:  # add SPY for reference, if absent
-#         symbols.insert(0, 'SPY')
-#
-# #handle the multiple symbols.  Not working.....
-#     for symbol in symbols:
-#         #print symbol
-#         df_temp = pd.read_csv(symbol_to_path(symbol), index_col='Date',
-#                 parse_dates=True, usecols=['Date', 'Adj Close','Volume'], na_values=['nan'])
-#         if symbol == 'SPY':  # drop dates SPY did not trade
-#             #df["SPY"] = df.dropna(subset=["Close"])
-#             df_temp["SPY"] = df_temp['Adj Close']
-#             #print "here"
-#         else:
-#             df_temp["Last"] = df_temp['Adj Close']
-#             df_temp = df_temp.rename(columns={'Volume': 'Vol'})
-#         df = df.join(df_temp)
-#         #add_ticker_column(df,symbol)
-#         #print df
-#
-#
-#     return df
 
 
 def plot_data(df, title="Stock prices", xlabel="Date", ylabel="Price"):
@@ -127,7 +98,7 @@ def apply_sma(df):
     return df
 
 def apply_sma_to_price_ratio(df):
-    df['SMA_To_Price_Ratio'] = (df["SMA"] / df['Close'])  - 1
+    df['SMA_To_Price_Ratio'] = (df['SMA'] / df['Close'])  - 1
     df['BasePair_SMA_To_Price_Ratio'] = (df["BasePair_Close_SMA"] / df['BasePair_Close'])  - 1
     return df
 
@@ -146,7 +117,7 @@ def apply_future_returns(df):
     return df
 
 def apply_sma_momentum(df,day):
-    sp500MomIndicator1 = SMAMomentumIndicator(data=df['Close'], period=100,day=day)
+    sp500MomIndicator1 = SMAMomentumIndicator(data=df['Close'], period=100)
 
     df['1_Day_SMA_Momentum'] = sp500MomIndicator1.data
 
@@ -171,7 +142,7 @@ def apply_sharpe_ratio(df):
     avg_daily_risk = df["Volatility"]
     df["Sharpe_Ratio"] = (avg_daily_return - (t_bill)/ avg_daily_risk)
     return df
-def process(ticker):
+def process(ticker,addressable_date):
     #get data
     #dates = pd.date_range(addressable_dates)
 
@@ -179,23 +150,55 @@ def process(ticker):
 
     #symbols = ['SPY','AAPL', 'MSFT']
     symbols = [ticker]
+    if ('SPY' not in symbols):  # add SPY for reference, if absent
+        symbols.insert(0, 'SPY')
     #print symbols
     #return
-    df = get_data(symbols, addressable_dates)
+    # df = get_data(symbols, addressable_dates)
     #print len(df)
     # dfbase =
     # print df
+
+
+    df = pd.DataFrame(index=addressable_date,dtype=float)
+    for t in symbols:
+        data = ystockquote.get_historical_prices(ticker,addressable_date[0].strftime('%Y%m%d'),addressable_date[len(addressable_date) - 1].strftime('%Y%m%d'))
+        data = pd.DataFrame(data,columns=['Date','Open','High','Low','Close','Volume','Adj Close'],dtype=float)
+        data = data[1:]
+        df_temp = data.set_index([('Date')])
+        df_temp = df_temp[['Adj Close','Volume']]
+
+        df = df.join(df_temp)
+
+        if t == 'SPY':  # drop dates SPY did not trade
+
+                df = df.rename(columns={'Adj Close': 'BasePair_Close','Volume':'BasePair_Volume'})
+                df = df.dropna(subset=["BasePair_Volume"])
+
+        else:
+                df = df.rename(columns={'Adj Close': 'Close'})
+
+    df = pd.DataFrame(df,index=df.index,dtype=np.float64)
     df = apply_sma(df)
+
     # print len(df)
+
+    df = df.dropna()
+    # print df
     df = apply_sma_to_price_ratio(df)
+    # print df
     # print len(df)
     df = apply_future_returns(df)
+    # print df
     # print len(df)
     df = apply_sma_momentum(df,-1)
+    # print df
     df = apply_std_dev(df)
+    # print df
     df = apply_sharpe_ratio(df)
+    # print df
     df = df.dropna()
-  
+
     #todo: calculate sharpe ratio
     # get rolling mean 63 periods of daily returns
     # get the sdd of daily returns
@@ -203,7 +206,7 @@ def process(ticker):
     #modify this to apply all technical calculations on all addressable space
     #then just get subset for training data and test data.
 
-    training_df = df.ix[initial_training_dates];
+    training_df = df.ix[pd.date_range(addressable_date[0],addressable_date[len(addressable_date) - len(addressable_date)/3])]
     training_df = training_df.dropna()
 
     training_x = training_df[['Volume','Close','SMA','SMA_To_Price_Ratio','1_Day_SMA_Momentum']]
@@ -215,7 +218,7 @@ def process(ticker):
 
     clf.fit(training_x,training_y)
 
-    backtest_df = df.ix[initial_actual_test_date];
+    backtest_df = df.ix[pd.date_range(addressable_date[(len(addressable_date) - len(addressable_date)/3)+1] , addressable_date[len(addressable_date)-1])]
     backtest_df = backtest_df.dropna()
 
     backtest_x = backtest_df[['Volume','Close','SMA','SMA_To_Price_Ratio','1_Day_SMA_Momentum']]
@@ -240,7 +243,7 @@ def process(ticker):
     total = len(product)
     accuracy = float(num) / float(total)
     #ACCURACY CALCULATION.  if abs(prediction) is more than the abs(actual) then it should be tagged as false
-
+    acc_list.append(round(accuracy ,2))
     print ticker, "wins:", num,"total trades:", total, "Accuracy:", round(accuracy * 100,2), "%"
 
 
@@ -248,10 +251,15 @@ def train(clf, df,y):
     clf.fit(df,y)
 
 
-def main_run():
-    for ticker in ['AAPL', 'MSFT','ORCL','QCOM','BBY','MU','GILD','YUM','NFLX','VZ','APA','RRC','MDLZ','CSCO','V','MET','SBUX','GGP','UA','GM']:
+
+
+def get_accuracy(symbols,addressable_date):
+    symbols = symbols[1:]
+    for ticker in symbols:
     # for ticker in ['AAPL']:
-        process(ticker)
+        process(ticker,addressable_date)
+
+    return acc_list
 
 def main_run3():
 
@@ -264,6 +272,3 @@ def main_run3():
         #iterate_dates(ticker,addressable_dates,initial_training_dates,initial_test_date,initial_actual_test_date)
         print "******************************************"
 
-
-if __name__ == "__main__":
-    main_run()

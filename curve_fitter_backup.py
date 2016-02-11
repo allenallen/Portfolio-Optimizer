@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 import pandas as pd
 import scipy.optimize as spo
 import utils
-
+import Accuracy
 
 
 # y1 = []
@@ -80,23 +80,28 @@ def main_run():
     #            'RLC','SECB','SM','SMPH','TEL','URC']
     # symbols = ['AAPL','IBM','XOM','GLD']
     # symbols = ['goog','aapl','msft','amzn']
-    symbols = ['AC','ALI','BDO','BPI','DMC']
+    symbols = ['AAPL', 'MSFT','ORCL','QCOM','BBY','MU','GILD','YUM','NFLX','VZ','APA','RRC','MDLZ','CSCO','V','MET','SBUX','GGP','UA','GM']
     h = np.ones(len(symbols))
 
-    addressable_dates = pd.date_range('2012-04-16','2013-06-13')
-    df = utils.get_data(symbols, addressable_dates)
-
+    addressable_dates = pd.date_range('2012-01-01','2015-12-31')
+    df = utils.get_data_online(symbols, addressable_dates)
+    df = pd.DataFrame(df,index=df.index,dtype=np.float64)
     df = df.dropna()
 
     x = np.asarray(utils.daily_returns(df[symbols[1:]]).std())
+    # print x
     y = np.asarray(utils.daily_returns(df[symbols[1:]]).mean())
+    # print y
     # b = [1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.,1.]
     z = np.asarray(utils.get_correlation(df)[1:])
+    # print z
     # p = [.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5,.5]
-    b = [1.,1.,1.,1.,1.]
-    p = [.5,.5,.5,.5,.5]
+    b = np.ones(len(symbols) - 1)
+    # print b
+    p = Accuracy.get_accuracy(symbols,addressable_dates)
+    # print p
     sharpe_ratios = utils.get_sharpe_ratio(utils.daily_returns(df[symbols[1:]]))
-    print sharpe_ratios
+    # print sharpe_ratios
 
     data = (x,y,z,b,p)
 
